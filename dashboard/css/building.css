@@ -226,6 +226,12 @@ svg .xr-d-sub { font-size: var(--text-xs); fill: var(--muted); font-weight: 400;
 .bx-key-pre { border-top: 1.5px dashed var(--muted); margin-left: var(--space-3); }
 .xr-tl-summary { font-size: var(--text-md); color: var(--ink-2); max-width: 52em; margin: var(--space-3) 0 var(--space-2); }
 .xr-tl-summary b { color: var(--ink); }
+/* Score history legend: only the systems in this building's history, swatches drawn like the lines */
+.xr-tl-legend { display: flex; flex-wrap: wrap; gap: 2px var(--space-4); margin: 0 0 var(--space-1); font-size: var(--text-xs); line-height: var(--leading-snug); color: var(--ink-2); }
+.xr-tl-key { display: inline-flex; align-items: center; gap: var(--space-1); }
+.xr-tl-swatch { flex: none; width: 18px; height: 0; border-top: 2px solid var(--accent); }
+.xr-tl-swatch.is-other { border-top: 1.5px dashed var(--muted); }
+.xr-tl { display: block; max-width: 100%; }
 svg .xr-tl-pt { cursor: pointer; }
 svg .xr-tl-pt:focus { outline: none; }
 svg .xr-tl-pt:focus-visible circle:first-child { fill: none; stroke: var(--focus); stroke-width: 2.5px; }

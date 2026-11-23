@@ -94,7 +94,13 @@ body.is-story .fp-view { display: flex; align-items: center; }
 body.is-story .fp-wrap { width: 100%; max-width: 1120px; margin: 0 auto; }
 body.is-story .fp-verdict, body.is-story .fp-examples, body.is-story .fp-table, body.is-story .fp-filter,
 body.is-story .fp-city, body.is-story .fp-method-block, body.is-story .fp-intro, body.is-story .fp-items-title { display: none; }
-body.is-story .fp-search, body.is-story .fp-card-head .info-btn, body.is-story .fp-pick-note, body.is-story .fp-facts:last-child { display: none; }
+body.is-story .fp-search, body.is-story .fp-pick-note, body.is-story .fp-meta-link { display: none !important; }
+body.is-story .fp-examples-wrap, body.is-story .fp-items-bar, body.is-story .fp-pager, body.is-story .fp-city-more, body.is-story .pf-go { display: none !important; }
+/* the guided story lists every item at once, inside its own frame (the Compare page pages them instead) */
+body.is-story .fp-matrix-scroll { overflow-y: auto; background: var(--surface); border: var(--border); border-radius: var(--radius-md); }
+body.is-story .fp-matrix { border: 0; }
+body.is-story .fp-matrix thead th { position: sticky; top: 0; z-index: 1; }
+body.is-story .pf-row-btn { cursor: default; }
 body.is-story .fp-card-name { display: block; }
 body.is-story .fp-sum { margin-bottom: var(--space-4); }
 /* the chapter shows the paired bars; "Show every item" swaps them for the shared item matrix */
@@ -160,3 +166,8 @@ body.story-detail .lens { max-height: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .story-panel * { transition: none !important; }
 }
+
+/* Compare in the story: the area chart alone, without the glance column or its card */
+body.is-story .fp-glance, body.is-story .fp-prof-main > .fp-g-title { display: none !important; }
+body.is-story .fp-prof-grid { display: block; }
+body.is-story .fp-prof-main { padding: 0; background: none; border: 0; }

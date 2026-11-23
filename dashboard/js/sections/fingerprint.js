@@ -22,9 +22,11 @@
 import { enhanceSelect } from '../components/select.js';
 import { initSearch } from '../atlas/search.js';
 import { itemLabel } from '../model.js';
-import { itemStats, buildingProfile, eraProfile, pairRows, rowMatches, pairObservation, sameScorePairs, sameScoreMatch, scoreOptions, cityFindings, SCALES, UNCOMMON_SHARE } from '../fingerprint-model.js';
+import { itemStats, buildingProfile, eraProfile, pairRows, rowMatches, pairObservation, sameScorePairs, sameScoreMatch, scoreOptions, cityFindings, SCALES, UNCOMMON_SHARE, FP_GROUPS } from '../fingerprint-model.js';
 import { tip, pct, fmt, esc, titleCase, formatDate, cssVar, anchorEvent } from '../ui.js';
-import { renderProfile, refitProfile } from './fp-profile.js';
+import { renderProfile } from './fp-profile.js';
+import { renderGlance } from './fp-glance.js';
+import { fitRows, areaPicker } from './fp-fit.js';
 import { rowsHtml, colHead, bindItemTips } from './fp-rows.js';
 import { reducedMotion } from '../motion.js';
 
@@ -42,10 +44,17 @@ const TABS = ['profile', 'items', 'city'];
 let tab = 'profile';
 let last = null;
 let shown = null; // the pair on screen, for the address suggestions
-// Every item: which rows to show, and which areas are open (one at a time under "Show all")
+// Every item: which rows to show, which area (one at a time) and the first row of the page shown. The page goes
+// back to the first whenever the pair, the area or the filter changes.
 let filter = 'all';
-let openAreas = null;
+let itemsArea = null;
+let itemsFirst = 0;
+let profileFirst = 0;
+let cityArea = null;
 let pairKey = '';
+const SHORT = new Map(FP_GROUPS.map((g) => [g.key, g.short]));
+// an area's short name, with everything after its first word dropped on phones ("Shared spaces" → "Shared")
+const phoneShort = (s) => { const [w, ...rest] = s.split(' '); return rest.length ? `${w}<span class="fp-wide-only"> ${rest.join(' ')}</span>` : w; };
 
 const ratingColor = (v) => cssVar(`--fp-${v}`);
 const sysName = (r) => SCALES[r.era].system;
@@ -62,7 +71,7 @@ export function renderFingerprint(ctx, M, state) {
 
   // The grid order and the "uncommon" reference always use all of Toronto, so a building's
   // items read the same way whichever ward filter is on.
-  if (layoutCache.key !== pm) layoutCache = { key: pm, layout: itemStats(pm.latest, pm.cats, itemLabel) };
+  if (layoutCache.key !== pm) { const lay = itemStats(pm.latest, pm.cats, itemLabel); layoutCache = { key: pm, layout: lay, scores: pm.latest.map((r) => r.score) }; }
   const layout = layoutCache.layout;
   const other = M.byPeriod.pre;
 
@@ -97,16 +106,19 @@ export function renderFingerprint(ctx, M, state) {
   const sel = $('fp-score');
   sel.innerHTML = opts.map((o) => `<option value="${o.score}" ${o.score === shownScore ? 'selected' : ''}>${o.score} (${fmt.n(o.n)} building${o.n === 1 ? '' : 's'})</option>`).join('');
   shown = { a, b, pm, other };
+  $('fp-examples-wrap').hidden = off;
   $('fp-next').hidden = mode === 'custom' || pairs.length < 2;
   $('fp-next').textContent = pairs.length > 1 ? `Show another pair (${(state.pairIndex % pairs.length) + 1} of ${pairs.length})` : '';
   $('fp-reset').hidden = mode !== 'custom';
   for (const [slot, r] of [['a', a], ['b', b]]) {
-    $(`fp-${slot}`).placeholder = r ? titleCase(r.address) : 'Start typing an address…';
     $(`fp-${slot}-name`).textContent = r ? titleCase(r.address) : '';
+    // the search bar shows the building's address (left alone while the reader is typing in it)
+    if (document.activeElement !== $(`fp-${slot}`)) $(`fp-${slot}`).value = r ? titleCase(r.address) : '';
     $(`fp-${slot}-meta`).innerHTML = summary(r, slot === 'b' && suggested ? 'Suggested: same score' : '');
+    $(`fp-${slot}-meta`).classList.toggle('is-empty', !r);
     document.querySelector(`.fp-card[data-slot="${slot}"]`).classList.toggle('is-empty', !r);
   }
-  $('fp-b-label').textContent = b && suggested ? 'Building B (suggested)' : 'Building B';
+  $('fp-b-label').textContent = b && suggested ? 'Second building (suggested, same score): address' : 'Second building: address';
 
   // ---- intro numbers (computed, not typed) -------------------------------------
   const scores = pm.latest.map((r) => r.score).sort(d3.ascending);
@@ -121,15 +133,19 @@ export function renderFingerprint(ctx, M, state) {
   $('fp-pair').hidden = !ready;
   $('fp-verdict').innerHTML = ready ? observation(pa, pb) : missing({ a, b, mode, pm, score: state.score });
   if (!ready) { $('fp-legend').hidden = true; $('fp-legend-btn').setAttribute('aria-expanded', 'false'); }
-  renderProfile($('fp-profile'), pa, pb);
   const story = document.body.classList.contains('is-story');
   if (ready) {
     const key = `${a.rsn}|${b.rsn}`;
-    if (key !== pairKey) { pairKey = key; openAreas = null; if (filter === 'diff' && a.era !== b.era) filter = 'all'; }
+    if (key !== pairKey) { pairKey = key; itemsArea = null; itemsFirst = 0; profileFirst = 0; if (filter === 'diff' && a.era !== b.era) filter = 'all'; }
+  }
+  renderProfile($('fp-profile'), pa, pb, { onArea: (k) => { if (document.body.classList.contains('is-story')) return; itemsArea = k; itemsFirst = 0; showTab('items', false, `fp-items-areas`); } });
+  if (ready) {
     if (tab === 'items' || story) drawMatrix($('fp-matrix'), pa, pb, ctx);
     for (const slot of ['a', 'b']) ctx.registerShown?.(slot, (slot === 'a' ? a : b).rsn);
   } else $('fp-matrix').innerHTML = '';
   renderTable(pa, pb);
+  lastGlance = ready && !story ? { pa, pb, scores: layoutCache.scores, era: pm.era } : null;
+  if (!lastGlance) $('fp-glance').hidden = true;
 
   // ---- Toronto overview (or the ward's, labelled as such) ------------------------------
   if (tab === 'city' && !story) {
@@ -137,10 +153,76 @@ export function renderFingerprint(ctx, M, state) {
     const cityLayout = ctx.ward ? { groups: layout.groups, stats: itemStats(ctx.latest, pm.cats, itemLabel).stats } : layout;
     const pop = { ward: wardName, n: ctx.ward ? ctx.latest.length : pm.latest.length };
     $('fp-city-title').textContent = pop.ward ? `The same items, for the ${fmt.n(pop.n)} evaluated buildings in ${pop.ward}` : 'The same items, for every building in Toronto';
-    renderCityNotes(cityLayout, pop);
-    drawCity($('fp-city-chart'), cityLayout, pop);
+    renderCityNotes(cityLayout, pop, ready && [pa, pb].some((p) => p.era === 'cur'));
+    lastCity = { layout: cityLayout, pop, pair: ready ? { a: pa, b: pb } : null };
+    drawCityFitted();
   }
   renderMethod(pm, layout);
+  fitShown();
+}
+
+// ---- fitting the shown view to the window (fp-fit.js) ------------------------------------------
+// By category and Every item page their rows; nothing scrolls. In the guided story the comparison lays itself out
+// (story.css), so its area rows are never paged.
+function fitShown() {
+  const story = document.body.classList.contains('is-story');
+  if (tab === 'profile' && lastGlance) renderGlance($('fp-glance'), lastGlance.pa, lastGlance.pb, lastGlance);
+  if (tab === 'profile' || story) {
+    const rows = [...$('fp-profile').querySelectorAll('.pf-row')];
+    profileFirst = fitRows({ box: $('fp-profile-fit'), rows, pager: $('fp-profile-pager'), first: profileFirst, label: 'areas', enabled: !story,
+      onPage: (first, dir) => { profileFirst = first; fitShown(); keepPagerFocus($('fp-profile-pager'), dir); } });
+  }
+  if (tab === 'items' || story) {
+    const rows = [...$('fp-matrix').querySelectorAll('.fp-m-row')];
+    itemsFirst = fitRows({ box: $('fp-items-fit'), rows, pager: $('fp-items-pager'), first: itemsFirst, label: 'items', enabled: !story,
+      onPage: (first, dir) => { itemsFirst = first; fitShown(); keepPagerFocus($('fp-items-pager'), dir); } });
+  }
+}
+
+// after paging, focus stays on the same button, or moves to the other one when that end is reached
+function keepPagerFocus(pager, dir) {
+  (pager.querySelector(`[data-page="${dir}"]:not(:disabled)`) ?? pager.querySelector('[data-page]:not(:disabled)'))?.focus();
+}
+
+// All of Toronto: the full chart when its area headings and columns stay legible at this width; otherwise one
+// area at a time, so the columns keep their room.
+let lastCity = null;
+let lastGlance = null;   // the pair at a glance, redrawn with the panel
+const CITY_MIN_CELL = 12;
+// The strips under the city's columns: one per building of the pair scored in the current system, labelled with a
+// short form of its address; the labels' width (measured in the page's own font) sets the gutter on the left.
+const stripSides = (pair) => (pair ? [['a', pair.a], ['b', pair.b]].filter(([, p]) => p.era === 'cur') : []);
+const shortAddr = (rec) => { const t = titleCase(rec.address); return t.length <= 22 ? t : `${t.slice(0, 21).replace(/\s+\S*$/, '')}…`; };
+function stripGut(pair, box) {
+  const sides = stripSides(pair);
+  if (!sides.length) return 0;
+  const w = Math.max(...sides.map(([, p]) => {
+    const s = document.createElement('span');
+    s.className = 'fp-strip-name';
+    s.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap';
+    s.textContent = shortAddr(p.rec);
+    box.appendChild(s);
+    const x = s.getBoundingClientRect().width;
+    s.remove();
+    return x;
+  }));
+  return Math.ceil(Math.min(170, w)) + 22;   // swatch, label, gap
+}
+function drawCityFitted() {
+  if (!lastCity) return;
+  const { layout, pop } = lastCity;
+  const box = $('fp-city-chart');
+  const items = layout.groups.reduce((n, g) => n + g.items.length, 0);
+  const usable = box.clientWidth - 14 * (layout.groups.length - 1) - stripGut(lastCity.pair, box);
+  const cell = (usable + GAP) / items - GAP;
+  const titles = layout.groups.every((g) => g.items.length * (cell + GAP) >= (g.short ?? g.label).length * 7.5 * (parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 || 1));
+  const full = box.clientWidth >= 760 && cell >= CITY_MIN_CELL && titles;
+  const pick = $('fp-city-areas');
+  pick.hidden = full;
+  if (full) { drawCity(box, layout, pop, { pair: lastCity.pair }); return; }
+  if (!layout.groups.some((g) => g.key === cityArea)) cityArea = layout.groups[0].key;
+  areaPicker(pick, layout.groups.map((g) => ({ key: g.key, short: phoneShort(g.short ?? SHORT.get(g.key) ?? g.label), label: g.label })), cityArea, (k) => { cityArea = k; drawCityFitted(); });
+  drawCity(box, { ...layout, groups: layout.groups.filter((g) => g.key === cityArea) }, pop, { one: true, pair: lastCity.pair });
 }
 
 function syncTabs() {
@@ -151,14 +233,15 @@ function syncTabs() {
     $(`fp-panel-${t}`).hidden = !on;
   }
 }
-function showTab(t, focus = false) {
-  if (t === tab) return;
+function showTab(t, focus = false, focusAfter = null) {
+  if (t === tab) { if (last) renderFingerprint(...last); return; }
   tab = t;
   syncTabs();
   if (focus) $(`fp-tab-${t}`).focus();
   const panel = $(`fp-panel-${t}`);
   if (!reduceMotion()) panel.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
   if (last) renderFingerprint(...last);
+  if (focusAfter) $(focusAfter)?.querySelector('[aria-checked="true"]')?.focus();
 }
 
 // ---- input --------------------------------------------------------------------------
@@ -169,7 +252,7 @@ function wire(ctx) {
   enhanceSelect($('fp-score'), { search: true, searchLabel: 'Search scores', placeholder: 'Find a score…', labelledBy: 'fp-score-label', className: 'fp-score-select' });
   $('fp-next').addEventListener('click', () => ctx.setFp((s) => ({ pairIndex: s.pairIndex + 1 })));
   $('fp-reset').addEventListener('click', () => ctx.setFp({ a: null, b: null, pairIndex: 0 }, '#/compare'));
-  // Building A / B: address search over every evaluated building (the latest evaluation of each; a building only
+  // The two address searches (first and second building): every evaluated building (the latest evaluation of each; a building only
   // evaluated before 2023 is listed with its system). Empty, a field suggests buildings with the same score as
   // the other building; each option says how its score relates.
   const searchable = () => {
@@ -184,7 +267,7 @@ function wire(ctx) {
       source: searchable,
       describe: (r) => {
         const o = shown?.[other];
-        const rel = !o ? '' : r.era !== o.era ? ` · ${sysName(r)} system` : r.score === o.score ? ' · same score' : ` · ${r.score > o.score ? '+' : '−'}${Math.abs(r.score - o.score)} vs ${other.toUpperCase()}`;
+        const rel = !o ? '' : r.era !== o.era ? ` · ${sysName(r)} system` : r.score === o.score ? ' · same score' : ` · ${r.score > o.score ? '+' : '−'}${Math.abs(r.score - o.score)} vs ${esc(shortAddr(o))}`;
         return `${esc(r.wardName)} · score <b class="tnum">${r.score}</b>${!o && r.era !== shown?.pm.era ? ` · ${sysName(r)} system` : rel}`;
       },
       suggest: () => {
@@ -196,7 +279,8 @@ function wire(ctx) {
       // Replacing one building keeps the other. A B the reader chose stays, whatever its score; a B that was
       // only suggested is suggested again for the new A. Picking the building already in the other slot swaps nothing.
       onPick: (r) => {
-        if (shown?.[other]?.rsn === r.rsn) { $('fp-status').textContent = `${titleCase(r.address)} is already Building ${other.toUpperCase()}.`; return; }
+        if (shown?.[other]?.rsn === r.rsn) { $('fp-status').textContent = `${titleCase(r.address)} is already being compared.`; return; }
+        $(`fp-${slot}`).value = titleCase(r.address);
         ctx.setFp((s) => (slot === 'a'
           ? { a: r.rsn, b: s.b && s.b !== r.rsn ? s.b : null }
           : { a: s.a ?? shown?.a?.rsn, b: r.rsn }));
@@ -205,6 +289,17 @@ function wire(ctx) {
   };
   pick('a');
   pick('b');
+  // The search bar holds the building's address: focusing it selects the address, so typing replaces it; leaving it
+  // without picking a building puts the address back.
+  for (const slot of ['a', 'b']) {
+    const input = $(`fp-${slot}`);
+    input.addEventListener('focus', () => requestAnimationFrame(() => input.select()));
+    input.addEventListener('blur', () => setTimeout(() => {
+      if (document.activeElement === input) return;
+      const r = shown?.[slot];
+      input.value = r ? titleCase(r.address) : '';
+    }, 150));
+  }
   $('fp-goto-cur').addEventListener('click', () => ctx.setPeriod('cur'));
   // tabs: click, and arrow keys / Home / End between them (the APG tabs pattern, automatic activation)
   for (const t of TABS) $(`fp-tab-${t}`).addEventListener('click', () => showTab(t));
@@ -219,9 +314,8 @@ function wire(ctx) {
   // "Show all"; every matching area open under the other two filters)
   const setFilter = (f, focus) => {
     if (f === filter || $(`fp-filter-${f}`)?.disabled) return;
-    filter = f; openAreas = null;
+    filter = f; itemsFirst = 0;
     if (last) renderFingerprint(...last);
-    document.querySelector('.fp-matrix-scroll')?.scrollTo({ top: 0 });
     if (focus) $(`fp-filter-${f}`)?.focus();
   };
   $('fp-filter').addEventListener('click', (e) => { const b = e.target.closest('[data-filter]'); if (b) setFilter(b.dataset.filter); });
@@ -233,17 +327,12 @@ function wire(ctx) {
     e.preventDefault();
     setFilter(on[(i + d + on.length) % on.length].dataset.filter, true);
   });
-  $('fp-matrix').addEventListener('click', (e) => {
-    const btn = e.target.closest('.fp-m-gbtn');
-    if (!btn) return;
-    const k = btn.dataset.key;
-    const open = new Set(openAreas ?? []);
-    if (open.has(k)) open.delete(k);
-    else { if (filter === 'all') open.clear(); open.add(k); }
-    openAreas = [...open];
-    syncAreas($('fp-matrix'));
-    btn.focus({ preventScroll: true });
-  });
+  // Example pairs: a compact disclosure beside the title (Esc or a click outside closes it)
+  const ex = $('fp-examples'), exBtn = $('fp-examples-btn');
+  const setEx = (open) => { ex.hidden = !open; exBtn.setAttribute('aria-expanded', String(open)); };
+  exBtn.addEventListener('click', () => setEx(ex.hidden));
+  $('fp-examples-wrap').addEventListener('keydown', (e) => { if (e.key === 'Escape' && !ex.hidden && !e.target.closest('.ll-select.is-open')) { e.stopPropagation(); setEx(false); exBtn.focus(); } });
+  document.addEventListener('pointerdown', (e) => { if (!ex.hidden && !e.target.closest('#fp-examples-wrap, .ll-select-pop')) setEx(false); });
   // the rating legend: a labelled disclosure beside the tabs
   $('fp-legend-btn').addEventListener('click', () => {
     const open = $('fp-legend').hidden;
@@ -260,18 +349,22 @@ function wire(ctx) {
   }
   // charts follow the panel's size
   let raf = 0;
-  new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { if (!last || $('fp-main').closest('[hidden]')) return; if (tab === 'profile') refitProfile($('fp-profile')); else if (tab === 'city') renderFingerprint(...last); }); })
+  // the shown view is fitted again whenever its space changes (window, Display text size, the legend opening)
+  new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { if (!last || $('fp-main').closest('[hidden]')) return; if (tab === 'city') drawCityFitted(); else fitShown(); }); })
     .observe($('fp-panel-items').parentElement);
+  new ResizeObserver(() => { if (tab === 'city' && lastCity) { cancelAnimationFrame(raf); raf = requestAnimationFrame(drawCityFitted); } }).observe($('fp-city-chart'));
 }
 
 // ---- the summaries -------------------------------------------------------------------------
 // Under each building's address field: its overall score, when it was inspected, where it is, and its inspection.
 function summary(r, note = '') {
-  if (!r) return '<p class="fp-empty">No building chosen yet</p>';
-  return `${note ? `<p class="fp-pick-note">${esc(note)}</p>` : ''}
-    <p class="fp-big"><b class="tnum">${r.score}</b><span>/100</span></p>
-    <p class="fp-facts">Inspected ${formatDate(r.date)} · ${esc(r.wardName)}${r.era !== 'cur' ? ` · ${sysName(r)} system` : ''}</p>
-    <p class="fp-facts"><a href="#/xray/${r.rsn}">View inspection<span class="visually-hidden"> of ${esc(titleCase(r.address))}</span> <span aria-hidden="true">→</span></a></p>`;
+  if (!r) return '';
+  // one compact line under the address, wrapping cleanly: the score, then the date and ward, then the link
+  return `${note ? `<span class="fp-pick-note">${esc(note)}</span>` : ''}
+    <span class="fp-big"><b class="tnum">${r.score}</b><span>/100</span></span>
+    <span class="fp-scorebar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, r.score))}%"></i></span>
+    <span class="fp-facts"><span class="fp-sr-phone">Inspected </span>${formatDate(r.date)}<span class="fp-ward"> · ${esc(r.wardName)}</span>${r.era !== 'cur' ? ` · ${sysName(r)} system` : ''}</span>
+    <a class="fp-meta-link" href="#/xray/${r.rsn}">View inspection<span class="visually-hidden"> of ${esc(titleCase(r.address))}</span> <span aria-hidden="true">→</span></a>`;
 }
 
 // ---- the observation ------------------------------------------------------------------------
@@ -299,61 +392,60 @@ function observation(pa, pb) {
 // When there is no pair to draw: what is missing, and what the reader can do about it.
 function missing({ a, b, mode, pm, score }) {
   const sys = SCALES[pm.era].system;
-  if (a && !b && a.era !== pm.era) return `<b>${esc(titleCase(a.address))}</b> was last evaluated in ${a.date.slice(0, 4)}, under the ${sysName(a)} scoring system. Choose a Building B to set beside it. Items from two systems are listed side by side, but their scores and ratings aren’t compared.`;
-  if (a && !b) return `No other building scored exactly <b>${a.score}</b> under the ${sys} system. Choose any building as Building B to compare; both scores will be shown.`;
-  if (!a && b) return 'Choose Building A to compare.';
+  if (a && !b && a.era !== pm.era) return `<b>${esc(titleCase(a.address))}</b> was last evaluated in ${a.date.slice(0, 4)}, under the ${sysName(a)} scoring system. Choose a second building to set beside it. Items from two systems are listed side by side, but their scores and ratings aren’t compared.`;
+  if (a && !b) return `No other building scored exactly <b>${a.score}</b> under the ${sys} system. Choose any building as the second building; both scores will be shown.`;
+  if (!a && b) return 'Choose a first building to compare.';
   return mode === 'example' ? `Fewer than two buildings scored ${score} under the ${sys} system, so there’s no example pair at that score. Choose another score or type two addresses.` : 'Choose two buildings to compare.';
 }
 
-// ---- every item: one shared matrix --------------------------------------------------------
-// One row per inspection item, grouped by area, with three columns: the item, Building A's rating and Building B's.
-// Items are matched by their inspection identifier, so each keeps its row even when only one building has a
-// rating. A filter narrows the rows; each area is a disclosure, so a long list opens one area at a time while
-// the column headers (which building is which) stay in view.
+// ---- every item: one area at a time ----------------------------------------------------------
+// One row per inspection item with three columns: the item and each building's rating. Items are matched
+// by their inspection identifier, so each keeps its row even when only one building has a rating. A filter narrows
+// the rows; one area is shown at a time (picked above the table), and its rows are paged to fit (fitShown), never
+// scrolled. In the guided story every area is listed at once.
 function drawMatrix(table, pa, pb, ctx) {
   const P = { a: pa, b: pb };
   const groups = pairRows(pa, pb);
   const rows = groups.flatMap((g) => g.rows);
   const count = { all: rows.length, diff: rows.filter((r) => r.diff).length, low: rows.filter((r) => r.low).length };
   const twoSystems = pa.era !== pb.era;
+  const story = document.body.classList.contains('is-story');
   const LABEL = { all: 'Show all', diff: 'Rated differently', low: 'Rated low in either building' };
+  const SHORT_F = { all: 'All', diff: 'Different', low: 'Low in either' };   // phones: the same filters, shorter words
   $('fp-filter').innerHTML = ['all', 'diff', 'low'].map((f) => {
     const off = f === 'diff' && twoSystems;
     return `<button type="button" role="radio" class="fp-filter-btn" id="fp-filter-${f}" data-filter="${f}" aria-checked="${filter === f}" tabindex="${filter === f ? 0 : -1}"
-      ${off ? 'disabled title="Needs ratings from the same scoring system on both sides"' : ''}>${LABEL[f]} <span class="fp-filter-n">${off ? '–' : count[f]}</span></button>`;
+      aria-label="${LABEL[f]}, ${off ? 'not available across two scoring systems' : `${count[f]} items`}"
+      ${off ? 'disabled title="Needs ratings from the same scoring system on both sides"' : ''}><span class="fp-f-long">${LABEL[f]}</span><span class="fp-f-short" aria-hidden="true">${SHORT_F[f]}</span> <span class="fp-filter-n">${off ? '–' : count[f]}</span></button>`;
   }).join('');
 
-  const shownGroups = groups.map((g) => ({ ...g, rows: g.rows.filter((r) => rowMatches(r, filter)) })).filter((g) => g.rows.length);
-  // which areas start open: under "Show all", the area where the two differ most (else the first); otherwise all
-  if (!openAreas) {
-    if (filter !== 'all') openAreas = shownGroups.map((g) => g.key);
-    else {
-      const best = d3.greatest(groups, (g) => Math.abs(g.a.low - g.b.low) * 100 + g.rows.filter((r) => r.diff).length);
-      openAreas = [(best && (best.a.low !== best.b.low || best.rows.some((r) => r.diff)) ? best : groups[0]).key];
-    }
+  const shownGroups = groups.map((g) => ({ ...g, rows: g.rows.filter((r) => rowMatches(r, filter)) }));
+  // which area: the one chosen, while it has matching rows; else the area where the two differ most; else the first with rows
+  if (!shownGroups.find((g) => g.key === itemsArea)?.rows.length) {
+    const withRows = shownGroups.filter((g) => g.rows.length);
+    const best = d3.greatest(withRows, (g) => Math.abs(g.a.low - g.b.low) * 100 + g.rows.filter((r) => r.diff).length);
+    itemsArea = (best ?? withRows[0] ?? shownGroups[0]).key;
+    itemsFirst = 0;
   }
-  const side = (g, slot) => (g[slot].rated ? `${slot.toUpperCase()} ${g[slot].low} of ${g[slot].rated} low` : `${slot.toUpperCase()} no rated items`);
-  table.innerHTML = `<caption class="visually-hidden">Every inspection item for ${esc(titleCase(pa.rec.address))} (A) and ${esc(titleCase(pb.rec.address))} (B), grouped by area${filter !== 'all' ? `, ${LABEL[filter].toLowerCase()} only` : ''}</caption>
+  const pick = $('fp-items-areas');
+  pick.hidden = story;
+  areaPicker(pick, shownGroups.map((g) => ({ key: g.key, short: phoneShort(SHORT.get(g.key) ?? g.label), label: g.label, count: g.rows.length, disabled: !g.rows.length,
+    title: `${g.label}: ${g.rows.length} item${g.rows.length === 1 ? '' : 's'}${filter !== 'all' ? ' shown' : ''}` })), itemsArea, (k) => {
+    if (k === itemsArea) return;
+    itemsArea = k; itemsFirst = 0;
+    if (last) renderFingerprint(...last);
+  });
+
+  const side = (g, slot) => (g[slot].rated ? `${g[slot].low} of ${g[slot].rated} rated low` : 'No rated items');
+  const visible = story ? shownGroups.filter((g) => g.rows.length) : shownGroups.filter((g) => g.key === itemsArea && g.rows.length);
+  table.innerHTML = `<caption class="visually-hidden">Inspection items for ${esc(titleCase(pa.rec.address))} and ${esc(titleCase(pb.rec.address))}${story ? '' : `: ${esc(visible[0]?.label ?? '')}`}${filter !== 'all' ? `, ${LABEL[filter].toLowerCase()} only` : ''}</caption>
     <colgroup><col class="fp-m-col-item" /><col class="fp-m-col-r" /><col class="fp-m-col-r" /></colgroup>
-    <thead><tr><th scope="col" class="fp-m-h-item">Inspection item</th><th scope="col" class="fp-m-h">${colHead(P, 'a')}</th><th scope="col" class="fp-m-h">${colHead(P, 'b')}</th></tr></thead>
-    ${shownGroups.length ? shownGroups.map((g) => `<tbody class="fp-m-group" data-key="${g.key}">
-      <tr class="fp-m-grow"><th scope="colgroup" colspan="3"><button type="button" class="fp-m-gbtn" data-key="${g.key}" aria-expanded="false">
-        <span class="fp-m-glabel">${esc(g.label)}</span><span class="fp-m-gcount">${side(g, 'a')} · ${side(g, 'b')}${filter !== 'all' ? ` · ${g.rows.length} shown` : ''}</span><span class="pf-chev" aria-hidden="true"></span></button></th></tr>
+    <thead><tr><th scope="col" class="fp-m-h-item">Inspection item</th><th scope="col" class="fp-m-h" data-slot="a">${colHead(P, 'a')}</th><th scope="col" class="fp-m-h" data-slot="b">${colHead(P, 'b')}</th></tr></thead>
+    ${visible.length ? visible.map((g) => `<tbody class="fp-m-group is-open" data-key="${g.key}">
+      <tr class="fp-m-grow"><th scope="colgroup"><span class="fp-m-gbtn"><span class="fp-m-glabel">${esc(g.label)}</span></span></th><td class="fp-m-gcount" data-slot="a">${side(g, 'a')}</td><td class="fp-m-gcount" data-slot="b">${side(g, 'b')}</td></tr>
       ${rowsHtml(g.rows, P)}
     </tbody>`).join('') : `<tbody><tr><td colspan="3" class="fp-m-none">${filter === 'diff' ? 'No item was rated differently: both buildings got the same rating on every item rated in both.' : 'Neither building had an item rated low.'}</td></tr></tbody>`}`;
-  syncAreas(table);
   bindItemTips(table, groups, P, $('fp-live'));
-}
-
-function syncAreas(table) {
-  const open = new Set(openAreas ?? []);
-  const story = document.body.classList.contains('is-story');
-  table.querySelectorAll('.fp-m-group').forEach((tb) => {
-    const on = story || open.has(tb.dataset.key);   // the guided story shows every area
-    tb.classList.toggle('is-open', on);
-    tb.querySelector('.fp-m-gbtn').setAttribute('aria-expanded', String(on));
-    tb.querySelectorAll('.fp-m-row').forEach((tr) => { tr.hidden = !on; });
-  });
 }
 
 // Hover, focus and arrow keys. One tab stop per chart; arrows move between items.
@@ -361,8 +453,10 @@ function syncAreas(table) {
 const hotCol = (col) => document.querySelectorAll('#fp-main [data-col]').forEach((n) => n.classList.toggle('is-hot', n.dataset.col === col));
 function bindCells(svg, cells, flat, tipHtml, spoken, label = 'Inspection items') {
   const hot = hotCol;
-  cells.on('mouseenter', function (ev, d) { hot(d.it.col); tip.show(tipHtml(d), ev); })
-    .on('click', function (ev, d) { hot(d.it.col); tip.show(tipHtml(d), anchorEvent(this)); }) // touch
+  // the cells are bound to their positions; the tooltip data is the matching entry of `flat`
+  const of = (node) => flat[cells.nodes().indexOf(node)];
+  cells.on('mouseenter', function (ev) { const d = of(this); hot(d.col); tip.show(tipHtml(d), ev); })
+    .on('click', function () { const d = of(this); hot(d.col); tip.show(tipHtml(d), anchorEvent(this)); }) // touch
     .on('mousemove', (ev) => tip.move(ev))
     .on('mouseleave', () => { hot(null); tip.hide(); });
   const group = svg.select('.fp-cells').attr('tabindex', 0).attr('role', 'group')
@@ -372,7 +466,7 @@ function bindCells(svg, cells, flat, tipHtml, spoken, label = 'Inspection items'
   const show = (i) => {
     idx = Math.max(0, Math.min(flat.length - 1, i));
     const d = flat[idx];
-    hot(d.it.col);
+    hot(d.col);
     tip.show(tipHtml(d), anchorEvent(nodes[idx]));
     $('fp-live').textContent = spoken(d);
   };
@@ -400,22 +494,31 @@ function bindCells(svg, cells, flat, tipHtml, spoken, label = 'Inspection items'
 }
 
 // ---- Toronto overview: the same grid, each square a 100% column of ratings ----------------
-function drawCity(box, layout, pop) {
+// With a pair chosen, two strips under the columns show how each building of the pair was rated on each item
+// (in the same rating colours), so the pair can be read against the whole city item by item. Only a building scored
+// in the current system has a strip; the city chart is that system's.
+function drawCity(box, layout, pop, { one = false, pair = null } = {}) {
   const n = pop.n;
   box.innerHTML = '';
   const width = Math.max(280, box.clientWidth);
-  const wide = width >= 760;
+  const wide = width >= 760 || one;   // one area at a time: its columns in one row, sized to the space
+  const sides = wide ? stripSides(pair).map(([slot, p]) => ({ slot, p, by: new Map(p.groups.flatMap((g) => g.items).map((i) => [i.col, i])) })) : [];
+  const gut = sides.length ? stripGut(pair, box) : 0;
+  const ROW = 18, stripH = sides.length ? 8 + sides.length * ROW : 0;
   // Wide screens: groups side by side would get cramped, so lay the groups out in one long row of columns.
   const items = layout.groups.flatMap((g) => g.items.map((col) => ({ col, g })));
   const groupGap = wide ? 14 : 0;
   let cell, colH, height, pos;
   if (wide) {
-    const usable = width - groupGap * (layout.groups.length - 1);
+    const usable = width - gut - groupGap * (layout.groups.length - 1);
     cell = Math.max(8, Math.floor((usable + GAP) / items.length - GAP));
-    colH = box.clientHeight > 120 ? Math.max(90, Math.min(260, box.clientHeight - 34 - 10)) : 120;
-    let x = 0, last = null;
-    pos = items.map((d) => { if (last && d.g !== last) x += groupGap; last = d.g; const p = { ...d, x, y: 34 }; x += cell + GAP; return p; });
-    height = 34 + colH + 8;
+    if (one) cell = Math.min(cell, 56);
+    const top = one ? 4 : 34;
+    // the columns take the height the chart box has (it is sized by the panel); a small box gets shorter columns
+    colH = box.clientHeight > 0 ? Math.max(stripH ? 36 : 60, Math.min(260, box.clientHeight - top - 10 - stripH)) : 120;
+    let x = gut, last = null;
+    pos = items.map((d) => { if (last && d.g !== last) x += groupGap; last = d.g; const p = { ...d, x, y: top }; x += cell + GAP; return p; });
+    height = top + colH + 8 + stripH;
   } else {
     cell = Math.max(16, Math.min(28, Math.floor((width + GAP) / PER_ROW - GAP)));
     colH = Math.round(cell * 2.2);
@@ -433,7 +536,7 @@ function drawCity(box, layout, pop) {
   // group titles
   for (const g of layout.groups) {
     const first = pos.find((p) => p.g === g), lastP = [...pos].reverse().find((p) => p.g === g);
-    if (!first) continue;
+    if (!first || one) continue;   // one area at a time: the picker above already names it
     if (wide) {
       const span = lastP.x + cell - first.x;
       svg.append('text').attr('class', 'group-title fp-city-title').attr('x', first.x).attr('y', 14).text(span >= g.label.length * 7 + 8 ? g.label : (g.short ?? g.label.split(' ')[0]));
@@ -445,7 +548,7 @@ function drawCity(box, layout, pop) {
 
   const cols = svg.append('g').attr('class', 'fp-cells').selectAll('g').data(pos).join('g')
     .attr('class', 'fp-cell').attr('data-col', (d) => d.col).attr('transform', (d) => `translate(${d.x},${d.y})`);
-  cols.append('rect').attr('class', 'fp-hit').attr('x', -GAP / 2).attr('y', -2).attr('width', cell + GAP).attr('height', colH + 4);
+  cols.append('rect').attr('class', 'fp-hit').attr('x', -GAP / 2).attr('y', -2).attr('width', cell + GAP).attr('height', colH + 4 + stripH);
   // stacked from the baseline up: 0, 1, 2, then 3 on top, so the low marks read as a bar from the bottom
   cols.each(function (d) {
     const s = layout.stats.get(d.col);
@@ -459,28 +562,48 @@ function drawCity(box, layout, pop) {
       acc += h;
     }
   });
-  svg.append('line').attr('class', 'fp-base').attr('x1', 0).attr('x2', width).attr('y1', (wide ? 34 : 0) + colH + 0.5).attr('y2', (wide ? 34 : 0) + colH + 0.5).attr('hidden', wide ? null : true);
+  const baseY = (wide ? pos[0]?.y ?? 34 : 0) + colH + 0.5;
+  svg.append('line').attr('class', 'fp-base').attr('x1', gut).attr('x2', one ? pos.at(-1).x + cell : width).attr('y1', baseY).attr('y2', baseY).attr('hidden', wide ? null : true);
+  // the pair's own ratings, one strip per building
+  sides.forEach(({ slot, p, by }, k) => {
+    const y = baseY + 8 + k * ROW;
+    const lab = svg.append('g').attr('class', `fp-strip-label is-${slot}`).attr('aria-hidden', 'true');
+    lab.append('title').text(titleCase(p.rec.address));
+    lab.append('rect').attr('x', 0).attr('y', y + 2).attr('width', 8).attr('height', 8).attr('rx', 2);
+    lab.append('text').attr('class', 'fp-strip-name').attr('x', 13).attr('y', y + 10).text(shortAddr(p.rec));
+    cols.each(function (d) {
+      const it = by.get(d.col);
+      const sq = d3.select(this).append('rect').attr('class', `fp-strip${it?.status === 'rated' ? '' : ` is-${it?.status ?? 'blank'}`}`)
+        .attr('x', 0.5).attr('y', y - d.y + 0.5).attr('width', Math.max(1, cell - 1)).attr('height', ROW - 5).attr('rx', 2);
+      if (it?.status === 'rated') sq.style('fill', ratingColor(it.rating));
+    });
+  });
 
   const flat = pos.map((p) => ({ ...p, it: { stat: layout.stats.get(p.col) } }));
-  bindCells(svg, cols, flat, (d) => cityTip(d.it.stat, n, pop), (d) => `${d.it.stat.label}: ${pct(d.it.stat.lowShare)} rated 0 or 1, ${pct(d.it.stat.belowTopShare)} rated 2 or lower, across ${fmt.n(d.it.stat.rated)} buildings.`);
+  const theirs = (col) => sides.map(({ slot, p, by }) => { const it = by.get(col); return { slot, name: titleCase(p.rec.address), text: it?.status === 'rated' ? `${it.rating} of 3` : it?.status === 'na' ? 'N/A' : 'No rating recorded' }; });
+  bindCells(svg, cols, flat, (d) => cityTip(d.it.stat, n, pop, theirs(d.col)),
+    (d) => `${d.it.stat.label}: ${pct(d.it.stat.lowShare)} rated 0 or 1, ${pct(d.it.stat.belowTopShare)} rated 2 or lower, across ${fmt.n(d.it.stat.rated)} buildings.${theirs(d.col).map((t) => ` ${t.name}: ${t.text}.`).join('')}`);
 }
 
-function cityTip(s, n, pop) {
+function cityTip(s, n, pop, theirs = []) {
   const row = (v) => `<dt><span class="swatch bar" style="background:${ratingColor(v)}"></span> ${v}</dt><dd>${pct(s.dist[v] / s.rated, 1)} (${fmt.n(s.dist[v])})</dd>`;
   return `<div class="tt-title">${esc(s.label)}</div><div class="tt-sub">${esc(s.groupLabel)} · ${fmt.n(s.rated)} ${pop.ward ? `${esc(pop.ward)} ` : ''}buildings rated it</div>
-    <dl>${[3, 2, 1, 0].map(row).join('')}<dt>N/A</dt><dd>${fmt.n(s.na)} of ${fmt.n(n)} buildings (not counted)</dd></dl>`;
+    <dl>${[3, 2, 1, 0].map(row).join('')}<dt>N/A</dt><dd>${fmt.n(s.na)} of ${fmt.n(n)} buildings (not counted)</dd>
+    ${theirs.map((t) => `<dt>${esc(t.name)}</dt><dd><b>${t.text}</b></dd>`).join('')}</dl>`;
 }
 
 // The two callouts under the chart. Whose buildings they describe is always named: Toronto's, or the ward's
 // (with how many buildings) when a ward filter is on.
-function renderCityNotes(layout, pop) {
+function renderCityNotes(layout, pop, strips = false) {
   const f = cityFindings(layout);
   const where = pop.ward ? `Among ${esc(pop.ward)}’s ${fmt.n(pop.n)} evaluated buildings` : `Across Toronto’s ${fmt.n(pop.n)} evaluated buildings`;
   const whose = pop.ward ? `${esc(pop.ward)} buildings` : 'buildings';
   const list = (xs, key) => xs.map((s) => `${esc(s.label.toLowerCase())} (${pct(s[key])})`);
   const and = (a) => (a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a.at(-1)}` : a[0] ?? '');
+  // the findings sit in the disclosure under the chart, so the chart has the panel to itself
   $('fp-city-notes').innerHTML = `
-    <p><b>${where}, the same few items keep getting marked down.</b> The physical items most often rated below the top mark (2 or lower) are ${and(list(f.belowTop, 'belowTopShare'))}.</p>
+    <p><b>${where}, the same few items keep getting marked down:</b> ${and(list(f.belowTop, 'belowTopShare'))} were most often rated 2 or lower.</p>
+    ${strips ? '<p>The A and B strips under the columns show how your two buildings were rated on each item.</p>' : ''}
     ${f.recordsLow.length ? `<p><b>Paperwork counts too.</b> ${and(f.recordsLow.map((s) => `${pct(s.lowShare)} of ${whose} got a 0 or 1 for their ${esc(s.label.toLowerCase())}`))}. A building can look fine in the lobby and still be missing the records the City requires.</p>` : ''}`;
 }
 
@@ -499,7 +622,7 @@ function renderLegend(pa, pb) {
 function renderTable(pa, pb) {
   if (!pa || !pb) { $('fp-table-head').innerHTML = ''; $('fp-table-body').innerHTML = '<tr><td>Choose two buildings to compare.</td></tr>'; return; }
   const txt = (c, S) => (c.status === 'rated' ? `${c.rating} of ${S.max}${c.low ? ' (low)' : ''}` : { na: 'N/A', blank: 'No rating recorded', absent: 'Not in this scoring system' }[c.status]);
-  $('fp-table-head').innerHTML = `<tr><th scope="col">Item</th><th scope="col">Area</th><th scope="col">A · ${esc(titleCase(pa.rec.address))}</th><th scope="col">B · ${esc(titleCase(pb.rec.address))}</th><th scope="col">Toronto, rated 0–1</th></tr>`;
+  $('fp-table-head').innerHTML = `<tr><th scope="col">Item</th><th scope="col">Area</th><th scope="col">${esc(titleCase(pa.rec.address))}</th><th scope="col">${esc(titleCase(pb.rec.address))}</th><th scope="col">Toronto, rated 0–1</th></tr>`;
   $('fp-table-body').innerHTML = pairRows(pa, pb).flatMap((g) => g.rows.map((r) => `<tr><th scope="row">${esc(r.label)}</th><td>${esc(g.label)}</td><td>${txt(r.a, pa.scale)}</td><td>${txt(r.b, pb.scale)}</td><td>${r.stat.rated ? pct(r.stat.lowShare, 1) : '–'}</td></tr>`)).join('');
 }
 
@@ -514,7 +637,7 @@ function renderMethod(pm, layout) {
     <li><b>Two scoring systems.</b> The 2017–2023 system rated 20 different items from 1 to 5 (1 or 2 counts as low). Only one item name (graffiti) appears in both, on different scales. A building evaluated only then can be set beside a current one: its items are listed in the same five areas, marked “Not in this scoring system” on the other side, and no score or rating is compared across the two.</li>
     <li><b>Percentages.</b> Share of an area = items rated low ÷ items rated in that area. Toronto shares = buildings with that rating ÷ buildings where the item was rated. “Uncommon” means fewer than ${pct(UNCOMMON_SHARE)} of rated buildings got a 0 or 1 on that item.</li>
     <li><b>Areas.</b> The five areas are our grouping of the City's item names, chosen so a renter can picture where each item is. Within each area, items are ordered from most to least often low-rated across Toronto.</li>
-    <li><b>Example pairs.</b> For a chosen score, we pair the building with the most low ratings with one at the same score that has the fewest. From a building's inspection, Building B is the building with exactly the same score whose ratings differ most.</li>
+    <li><b>Example pairs.</b> For a chosen score, we pair the building with the most low ratings with one at the same score that has the fewest. From a building's inspection, the second building is the one with exactly the same score whose ratings differ most.</li>
     <li><b>Limits.</b> Ratings describe common areas on inspection day, not individual units, rents or how the landlord responds.</li>
   </ul>`;
 }

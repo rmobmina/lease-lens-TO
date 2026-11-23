@@ -38,6 +38,11 @@ export const INFO = {
     title: 'How movers are chosen',
     body: '<p>For each building, its single largest rise (or drop) between two consecutive evaluations in the selected scoring system. Each building appears at most once per list.</p>',
   },
+  'compare-view': {
+    title: 'About this comparison',
+    body: '<p>Two buildings’ inspection items, side by side: even buildings with the same score can look nothing alike. A low mark is a 0 or 1 of 3; N/A and unrecorded items are never counted.</p><p>From one building, we suggest a second with the same score whose ratings differ most. Type in either search bar to compare any building.</p>',
+    more: { href: '#/about', label: 'About the data' },
+  },
   'low-mark': {
     title: 'What is a low mark?',
     body: '<p>An item rated 0 or 1 on the current 0–3 scale, the two lowest marks. N/A items don’t apply and blanks were not recorded; neither is counted as a low mark or as a pass.</p>',
@@ -58,10 +63,6 @@ export const INFO = {
   'xray-ratings': {
     title: 'How are poor ratings counted?',
     body: '<p>Inspectors rate each item 0–3 (2023 – now) or 1–5 (2017 – 2023). LeaseLens counts the two lowest marks as <b>rated poorly</b>. A category’s share is its poorly rated items ÷ its applicable items. N/A and blank items are never counted, as a problem or as a pass.</p>',
-  },
-  'compare-match': {
-    title: 'How is Building B suggested?',
-    body: '<p>When you bring one building, we suggest another with exactly the same overall score in the same scoring system, choosing the one whose item ratings differ most. If none matches exactly, nothing is suggested. You can type any address as Building B, and both scores are always shown.</p>',
   },
   'history-systems': {
     title: 'Why aren’t older scores compared?',

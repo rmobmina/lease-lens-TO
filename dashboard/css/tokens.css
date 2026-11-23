@@ -63,6 +63,12 @@
   /* item ratings 3 → 0: one red ramp, light → dark, so order reads without hue */
   --fp-3: #E1E6EE; --fp-2: #F4B8B1; --fp-1: #D9473F; --fp-0: #8E1B22; --fp-on-low: #FFFFFF;
 
+  /* Compare buildings: the brand's two blues tell the buildings apart (A navy, B royal blue); red stays for low
+     ratings only, so the bars of low-rated items are red on both sides and A / B is carried by position and label */
+  --cmp-a: var(--brand-navy); --cmp-b: var(--brand-blue);
+  --cmp-a-ink: var(--brand-navy); --cmp-b-ink: var(--brand-blue);
+  --cmp-a-soft: #E9EDF5; --cmp-b-soft: var(--accent-soft); --cmp-on: #FFFFFF;
+
   /* Building X-Ray: category status (neutral / light red / red / grey + hatch) and model materials */
   --xr-ok: #D9D9D9; --xr-some: #F09A92; --xr-high: var(--civic-red-ink); --xr-none: #B3B7BD;
   --xr-sky: #F2F5FA; --xr-ground: #D9DCE2; --xr-outline: #3F4652; --xr-ov-ok: #9FB0D6;
@@ -195,7 +201,7 @@
     --line: rgba(176, 200, 255, 0.16); --grid: #1A2D58; --axis: rgba(176, 200, 255, 0.30);
     --accent: #8FB1FF; --accent-ink: #071330; --accent-soft: #17306A; --accent-strong: #8FB1FF; --focus: #8FB1FF; --warn: #FF7A7A;
     --low-10: #FF6B6B; --low-25: #A04A4A; --dot: #6A7A99; --up: #8FB1FF; --down: #FF6B6B; --flat: #4D5E82; --chart-neutral: #3E5079;
-    --fp-3: #22345E; --fp-2: #7A3A36; --fp-1: #E0574F; --fp-0: #FF9C92; --fp-on-low: #0F131B;
+    --fp-3: #22345E; --fp-2: #7A3A36; --fp-1: #E0574F; --fp-0: #FF9C92; --fp-on-low: #0F131B; --cmp-a: #EEF2FA; --cmp-b: #8FB1FF; --cmp-a-ink: #EEF2FA; --cmp-b-ink: #8FB1FF; --cmp-a-soft: #16264A; --cmp-b-soft: #17306A; --cmp-on: #071330;
     --xr-ok: #4B505A; --xr-some: #B8605A; --xr-high: #FF6B6B; --xr-none: #5D626B;
     --xr-sky: #0A1734; --xr-ground: #16244A; --xr-outline: #C9CED5; --xr-ov-ok: #6E80AE;
     --xr-facade: #B9B6AF; --xr-glass: #2B3446; --xr-band: #9A978F; --xr-roof: #5F5D59; --xr-roof-edge: #77746E; --xr-parapet: #A7A49D; --xr-penthouse: #A19E97;
@@ -221,7 +227,7 @@
   --line: rgba(176, 200, 255, 0.16); --grid: #1A2D58; --axis: rgba(176, 200, 255, 0.30);
   --accent: #8FB1FF; --accent-ink: #071330; --accent-soft: #17306A; --accent-strong: #8FB1FF; --focus: #8FB1FF; --warn: #FF7A7A;
   --low-10: #FF6B6B; --low-25: #A04A4A; --dot: #6A7A99; --up: #8FB1FF; --down: #FF6B6B; --flat: #4D5E82; --chart-neutral: #3E5079;
-  --fp-3: #22345E; --fp-2: #7A3A36; --fp-1: #E0574F; --fp-0: #FF9C92; --fp-on-low: #0F131B;
+  --fp-3: #22345E; --fp-2: #7A3A36; --fp-1: #E0574F; --fp-0: #FF9C92; --fp-on-low: #0F131B; --cmp-a: #EEF2FA; --cmp-b: #8FB1FF; --cmp-a-ink: #EEF2FA; --cmp-b-ink: #8FB1FF; --cmp-a-soft: #16264A; --cmp-b-soft: #17306A; --cmp-on: #071330;
   --xr-ok: #4B505A; --xr-some: #B8605A; --xr-high: #FF6B6B; --xr-none: #5D626B;
   --xr-sky: #0A1734; --xr-ground: #16244A; --xr-outline: #C9CED5; --xr-ov-ok: #6E80AE;
   --xr-facade: #B9B6AF; --xr-glass: #2B3446; --xr-band: #9A978F; --xr-roof: #5F5D59; --xr-roof-edge: #77746E; --xr-parapet: #A7A49D; --xr-penthouse: #A19E97;

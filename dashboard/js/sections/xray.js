@@ -595,7 +595,7 @@ function renderHistory(points, rec, pm, M, xs) {
   $('xr-tl-sub').textContent = sub;
   $('xr-tl-sub').hidden = !sub;
   $('xr-tl-note').innerHTML = other
-    ? `<span class="bx-key bx-key-cur" aria-hidden="true"></span>${SYS[pm.era]} <span class="bx-key bx-key-pre" aria-hidden="true"></span>${SYS[pm.era === 'cur' ? 'pre' : 'cur']}: <b>not directly comparable</b>, so never connected.`
+    ? `The two scoring systems are <b>not directly comparable</b>, so their points are never connected and changes are counted within one system only.`
     : `All evaluations here use the ${esc(pm.P.long)}. Scores from the other system are not directly comparable.`;
 
   const pick = points.find((p) => p.rec.uid === xs.tlPick) ?? points.find((p) => p.rec === rec) ?? points.at(-1);
@@ -604,7 +604,7 @@ function renderHistory(points, rec, pm, M, xs) {
   box.innerHTML = '';
   const height = Math.max(200, Math.floor(box.clientHeight || 360));
   renderTimeline(box, {
-    points, shown: rec, era: pm.era, P: pm.P, systemChange: M.byPeriod.cur.dates[0], height, summary: false,
+    points, shown: rec, era: pm.era, P: pm.P, systemChange: M.byPeriod.cur.dates[0], height, summary: false, legendInside: true,
     selected: pick.rec.uid, onSelect: (uid) => { xs.tlPick = uid; renderPick(points.find((p) => p.rec.uid === uid), rec); },
   });
 }

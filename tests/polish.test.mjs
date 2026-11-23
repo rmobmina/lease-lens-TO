@@ -185,7 +185,7 @@ test('Building Explorer: two tabs, comparing opens the shared view, and the meth
 
 test('contextual help answers one question in 30–60 words', async () => {
   const { INFO } = await import('../dashboard/js/content/info.js');
-  for (const k of ['xray-modes', 'xray-controls', 'xray-model', 'xray-ratings', 'compare-match', 'history-systems']) {
+  for (const k of ['xray-modes', 'xray-controls', 'xray-model', 'xray-ratings', 'compare-view', 'history-systems']) {
     const words = INFO[k].body.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).length;
     assert.ok(words >= 30 && words <= 60, `${k}: ${words} words`);
     assert.ok(INFO[k].title.length < 60, `${k}: a short title`);
@@ -265,4 +265,27 @@ test('ward ranking: an icon-only reverse-sort button whose name and tooltip say 
   assert.match(css, /\.ward-sort \{[^}]*width: 44px; height: 44px;/, 'a 44 × 44 hit area');
   assert.match(css, /\.ward-sort-icon \{[^}]*width: 20px; height: 20px;/);
   assert.match(css, /\.ward-sort:focus-visible \{ outline: var\(--focus-ring\)/);
+});
+
+test('Compare paging: rows are packed into pages that fit, every row on exactly one page', async () => {
+  const { pageBreaks } = await import('../dashboard/js/sections/fp-fit.js');
+  assert.deepEqual(pageBreaks([40, 40, 40, 40, 40], 130), [[0, 3], [3, 5]]);
+  assert.deepEqual(pageBreaks([40, 90, 40], 100), [[0, 1], [1, 2], [2, 3]], 'a wrapped (taller) row still fits by itself');
+  assert.deepEqual(pageBreaks([300, 20], 100), [[0, 1], [1, 2]], 'a row taller than the box still gets a page: always reachable');
+  for (const avail of [50, 120, 400]) {
+    const h = [37, 37, 60, 37, 74, 37, 37, 37, 37, 37, 37, 37, 37];
+    const pages = pageBreaks(h, avail);
+    assert.equal(pages.at(-1)[1], h.length);
+    pages.forEach(([s, e], i) => { assert.ok(e > s); if (i) assert.equal(s, pages[i - 1][1]); });
+  }
+});
+
+test('Score History: systems named in a legend above the plot, labels laid out without overlap', async () => {
+  const src = await readFile(new URL('../dashboard/js/sections/xray-timeline.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /'◀ 2017|system ▶'/, 'no scoring-system labels inside the plot');
+  assert.match(src, /className = 'xr-tl-legend'/);
+  assert.match(src, /filter\(\(e\) => points\.some\(\(p\) => p\.era === e\)\)/, 'only the systems in this history');
+  assert.match(src, /eras\.length > 1 && change > t0/, 'the dashed divider only when both systems are present');
+  assert.match(src, /function placeLabels\(/);
+  assert.match(src, /layoutLabels\(\);   \/\/ the newly selected point/, 'a new selection takes label priority');
 });

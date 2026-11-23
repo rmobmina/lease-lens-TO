@@ -430,8 +430,17 @@
           <section class="view fp-view" data-view="compare" aria-labelledby="fp-title" hidden>
             <div class="fp-wrap">
               <header class="fp-intro">
-                <h1 id="fp-title">Compare buildings <button type="button" class="info-btn" data-info="low-mark" data-info-from="fp-spread" aria-label="What a low mark is, and how scores spread across Toronto">i</button></h1>
-                <p class="lede">Lay two buildings’ inspection items side by side. Even buildings with the same score can look nothing alike.</p>
+                <h1 id="fp-title">Compare buildings <button type="button" class="info-btn" data-info="compare-view" data-info-from="fp-spread" aria-label="About this comparison: low marks, and how scores spread across Toronto">i</button></h1>
+                <!-- the same-score examples: a compact disclosure beside the title -->
+                <div class="fp-examples-wrap" id="fp-examples-wrap">
+                  <button type="button" class="btn btn-sm fp-examples-btn" id="fp-examples-btn" aria-expanded="false" aria-controls="fp-examples">Example pairs <span aria-hidden="true">▾</span></button>
+                  <div class="fp-examples" id="fp-examples" role="group" aria-labelledby="fp-score-label" hidden>
+                    <span class="fp-examples-label" id="fp-score-label">Same-score examples</span>
+                    <select id="fp-score"></select>
+                    <button type="button" class="btn btn-sm" id="fp-next"></button>
+                    <button type="button" class="link-btn" id="fp-reset" hidden>Back to example pairs</button>
+                  </div>
+                </div>
                 <div id="fp-spread" class="info-source" hidden></div>
               </header>
 
@@ -441,26 +450,19 @@
               </div>
 
               <div id="fp-main" class="fp-main">
-                <!-- The same-score examples: a secondary control, one compact line above the pair. -->
-                <div class="fp-examples" role="group" aria-labelledby="fp-score-label">
-                  <span class="fp-examples-label" id="fp-score-label">Same-score examples</span>
-                  <select id="fp-score"></select>
-                  <button type="button" class="btn btn-sm" id="fp-next"></button>
-                  <button type="button" class="link-btn" id="fp-reset" hidden>Back to example pairs</button>
-                </div>
-                <!-- Two building summaries of equal width, one column each: the address selector, the overall score, the
-                     inspection date and a link to the inspection. -->
-                <div class="fp-sum" role="group" aria-label="Choose buildings to compare">
+                <!-- The two buildings, side by side (the first on the left in every view): each card is its address search,
+                     showing the building's address, then its score, inspection date and a link to the inspection. -->
+                <div class="fp-sum" role="group" aria-label="The buildings being compared">
                   <div class="fp-card" data-slot="a">
-                    <div class="fp-card-head"><label class="fp-card-tag" for="fp-a">Building A</label></div>
                     <p class="fp-card-name" id="fp-a-name" aria-hidden="true"></p>
-                    <div class="search fp-search"><input id="fp-a" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fp-a-list" aria-describedby="fp-a-meta" autocomplete="off" spellcheck="false" placeholder="Start typing an address…" /><ul id="fp-a-list" class="search-list" role="listbox" aria-label="Buildings for A" hidden></ul></div>
+                    <label class="visually-hidden" for="fp-a" id="fp-a-label">First building: address</label>
+                    <div class="search fp-search"><input id="fp-a" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fp-a-list" aria-describedby="fp-a-meta" autocomplete="off" spellcheck="false" placeholder="Start typing an address…" /><ul id="fp-a-list" class="search-list" role="listbox" aria-label="Matching buildings" hidden></ul></div>
                     <div class="fp-pick-meta" id="fp-a-meta"></div>
                   </div>
                   <div class="fp-card" data-slot="b">
-                    <div class="fp-card-head"><label class="fp-card-tag" for="fp-b" id="fp-b-label">Building B</label><button type="button" class="info-btn" data-info="compare-match" aria-label="How Building B is suggested">i</button></div>
                     <p class="fp-card-name" id="fp-b-name" aria-hidden="true"></p>
-                    <div class="search fp-search"><input id="fp-b" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fp-b-list" aria-describedby="fp-b-meta" autocomplete="off" spellcheck="false" placeholder="Start typing an address…" /><ul id="fp-b-list" class="search-list" role="listbox" aria-label="Buildings for B" hidden></ul></div>
+                    <label class="visually-hidden" for="fp-b" id="fp-b-label">Second building: address</label>
+                    <div class="search fp-search"><input id="fp-b" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fp-b-list" aria-describedby="fp-b-meta" autocomplete="off" spellcheck="false" placeholder="Start typing an address…" /><ul id="fp-b-list" class="search-list" role="listbox" aria-label="Matching buildings" hidden></ul></div>
                     <div class="fp-pick-meta" id="fp-b-meta"></div>
                   </div>
                 </div>
@@ -468,7 +470,8 @@
                 <p class="fp-verdict" id="fp-verdict" aria-live="polite"></p>
                 <p class="visually-hidden" id="fp-status" aria-live="polite"></p>
 
-                <!-- One view at a time, swapped in place: the page never grows taller than the window. -->
+                <!-- One view at a time, swapped in place: the page never grows taller than the window. Each view fits its
+                     panel; rows that don't fit are paged (fp-fit.js), never scrolled. -->
                 <div class="fp-pair" id="fp-pair">
                 <div class="bx-nav fp-nav">
                   <div class="xr-tabs" role="tablist" aria-label="Comparison views">
@@ -484,21 +487,47 @@
 
                 <div class="fp-panels">
                   <div class="fp-panel" role="tabpanel" id="fp-panel-profile" aria-labelledby="fp-tab-profile">
-                    <div class="fp-profile" id="fp-profile"></div>
+                    <div class="fp-prof-grid">
+                      <div class="fp-prof-main">
+                        <h2 class="fp-g-title">Share of items rated low, by area</h2>
+                        <div class="fp-fit" id="fp-profile-fit"><div class="fp-profile" id="fp-profile"></div></div>
+                        <div class="fp-pager" id="fp-profile-pager" hidden></div>
+                      </div>
+                      <!-- the pair at a glance (fp-glance.js): where both scores sit in Toronto, and each building's ratings -->
+                      <aside class="fp-glance" id="fp-glance" aria-label="The pair at a glance" hidden>
+                        <section class="fp-g-card fp-g-scores-card">
+                          <h2 class="fp-g-title">Where their scores sit in Toronto</h2>
+                          <div class="fp-g-chart" id="fp-g-scores"></div>
+                          <p class="fp-g-note"></p>
+                        </section>
+                        <section class="fp-g-card">
+                          <h2 class="fp-g-title">How each building’s items were rated</h2>
+                          <div class="fp-g-mix" id="fp-g-mix"></div>
+                        </section>
+                      </aside>
+                    </div>
                   </div>
                   <div class="fp-panel" role="tabpanel" id="fp-panel-items" aria-labelledby="fp-tab-items" hidden>
                     <h2 class="visually-hidden fp-items-title">Every item, side by side</h2>
-                    <div class="fp-filter" role="radiogroup" aria-label="Which items to show" id="fp-filter"></div>
-                    <!-- one shared matrix: a row per inspection item, grouped by area; item, Building A, Building B (fingerprint.js drawMatrix) -->
-                    <div class="fp-matrix-scroll"><table class="fp-matrix" id="fp-matrix"></table></div>
+                    <div class="fp-items-bar">
+                      <div class="fp-filter" role="radiogroup" aria-label="Which items to show" id="fp-filter"></div>
+                      <div class="fp-area-pick" role="radiogroup" aria-label="Inspection area" id="fp-items-areas"></div>
+                    </div>
+                    <!-- one area at a time: a row per inspection item; item, first building, second building (fingerprint.js drawMatrix) -->
+                    <div class="fp-fit fp-matrix-scroll" id="fp-items-fit"><table class="fp-matrix" id="fp-matrix"></table></div>
+                    <div class="fp-pager" id="fp-items-pager"></div>
                     <p class="visually-hidden" id="fp-live" aria-live="polite"></p>
                   </div>
                   <div class="fp-panel" role="tabpanel" id="fp-panel-city" aria-labelledby="fp-tab-city" hidden>
                     <section class="fp-city" aria-labelledby="fp-city-title">
                       <h2 id="fp-city-title" class="fp-h2">The same items, for every building in Toronto</h2>
-                      <p class="fp-city-sub" id="fp-city-sub">One column per item, in the same order. Colours show the share of buildings at each rating, lowest marks at the bottom. Select a column, or tab to the chart and use the arrow keys, for its item and shares.</p>
+                      <div class="fp-area-pick" role="radiogroup" aria-label="Inspection area" id="fp-city-areas" hidden></div>
                       <div id="fp-city-chart" class="chart fp-city-chart"></div>
-                      <div class="fp-city-notes" id="fp-city-notes"></div>
+                      <details class="fp-city-more" id="fp-city-more">
+                        <summary>How to read this, and more findings</summary>
+                        <p class="fp-city-sub" id="fp-city-sub">One column per item, in the same order. Colours show the share of buildings at each rating, lowest marks at the bottom. Select a column, or tab to the chart and use the arrow keys, for its item and shares.</p>
+                        <div class="fp-city-notes" id="fp-city-notes"></div>
+                      </details>
                     </section>
                   </div>
                 </div>

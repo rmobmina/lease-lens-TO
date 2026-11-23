@@ -95,6 +95,7 @@ function history(el, D, app) {
     onPick: (uid) => app?.inspect(r.rsn, uid),
     where: 'inMap',
     height: Math.max(230, Math.min(420, el.clientHeight - head.offsetHeight - 24)),
+    legendInside: true,
   });
 }
 

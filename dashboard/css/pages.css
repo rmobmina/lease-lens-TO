@@ -11,26 +11,28 @@ body[data-depth="compare"]:not(.is-story) .depth-body,
 body[data-depth="page"] .depth-body { flex: 1; min-height: 0; display: flex; }
 body:not(.is-story) .fp-view:not([hidden]),
 .depth .page-view:not([hidden]) { flex: 1; min-height: 0; min-width: 0; display: flex; padding: var(--space-5) var(--space-6); overflow: auto; }
+/* Compare never scrolls: its rows are paged to the space that is left (fp-fit.js), at every width */
+body:not(.is-story) .fp-view:not([hidden]) { overflow: hidden; }
 .depth .page-view:not([hidden]) > .page { flex: 1; width: 100%; height: 100%; min-height: var(--bx-min-h); margin: 0 auto; padding: 0; }
 
 /* ---- Compare ------------------------------------------------------------------------------------------------ */
-body:not(.is-story) .fp-view > .fp-wrap { flex: 1; width: 100%; max-width: 1360px; height: 100%; min-height: var(--bx-min-h); margin: 0 auto; display: flex; flex-direction: column; }
+body:not(.is-story) .fp-view > .fp-wrap { flex: 1; width: 100%; max-width: 1360px; height: 100%; min-height: 0; margin: 0 auto; display: flex; flex-direction: column; }
 body:not(.is-story) .fp-intro { flex: none; max-width: none; margin: 0; }
-body:not(.is-story) .fp-intro h1 { font-size: clamp(26px, 2.1vw, 32px); line-height: var(--leading-tight); }
-body:not(.is-story) .fp-intro .lede { margin-top: var(--space-1); font-size: var(--text-base); line-height: var(--leading-body); color: var(--ink-2); max-width: none; }
+body:not(.is-story) .fp-intro { margin-bottom: var(--space-3); }
+body:not(.is-story) .fp-intro h1 { font-size: clamp(24px, 2vw, 30px); line-height: var(--leading-tight); }
 body:not(.is-story) .fp-main:not([hidden]), body:not(.is-story) .fp-pair:not([hidden]) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 body:not(.is-story) .fp-sum { flex: none; }
-body:not(.is-story) .fp-examples { margin-top: var(--space-3); }
-body:not(.is-story) .fp-examples, body:not(.is-story) .fp-verdict { flex: none; }
-.fp-nav { margin-top: var(--space-3); }
+body:not(.is-story) .fp-verdict { flex: none; }
+.fp-nav { flex: none; margin-top: var(--space-3); }
 .fp-nav .bx-method-btn + .bx-method-btn { margin-left: 0; }
-.fp-panels { flex: 1; min-height: 0; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); margin-top: var(--space-4); }
+.fp-panels { flex: 1; min-height: 0; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); margin-top: var(--space-3); }
 .fp-panel { grid-area: 1 / 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .fp-panel[hidden] { display: none; }
 
 /* By category: the area rows share the panel's height; an opened area's items scroll inside the panel */
 body:not(.is-story) .fp-profile { margin: 0; }
-body:not(.is-story) #fp-panel-profile { overflow-y: auto; }
+/* the fit box: the rows' space, measured by fp-fit.js; rows beyond it go to the next page, never out of view */
+body:not(.is-story) .fp-fit { flex: 1; min-height: 0; overflow: hidden; }
 
 /* Every item: the filters, then one matrix on a white surface that scrolls inside the panel (its column headers
    stay in view, so both buildings are always labelled) */
@@ -41,15 +43,26 @@ body:not(.is-story) #fp-panel-profile { overflow-y: auto; }
 .fp-legend-btn[aria-expanded="true"] span { transform: rotate(180deg); }
 
 /* every item: one shared matrix on a white surface; it scrolls inside the panel, never sideways */
-.fp-matrix-scroll { flex: 1; min-height: 0; overflow: auto; overflow-x: hidden; background: var(--surface); border: var(--border); border-radius: var(--radius-md); }
-.fp-matrix thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); border-bottom: var(--border-width) solid var(--border-control); }
+.fp-matrix-scroll { flex: 1; min-height: 0; overflow: hidden; }
+.fp-matrix { background: var(--surface); border: var(--border); border-radius: var(--radius-md); border-collapse: separate; border-spacing: 0; }
+.fp-matrix thead th { background: var(--surface); border-bottom: var(--border-width) solid var(--border-control); }
+.fp-matrix tbody:last-child tr:not([hidden]):last-of-type > * { border-bottom: 0; }
 
 /* All of Toronto: the city grid takes the height, its two notes sit below it */
 body:not(.is-story) .fp-city { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 0; padding: 0; border: 0; }
 body:not(.is-story) .fp-city .fp-h2 { flex: none; font-size: var(--text-lg); }
-body:not(.is-story) .fp-city-sub { flex: none; max-width: none; }
-body:not(.is-story) .fp-city-chart { flex: 1; min-height: 0; margin-top: var(--space-3); }
-body:not(.is-story) .fp-city-notes { flex: none; margin: var(--space-3) 0 0; font-size: var(--text-sm); color: var(--ink-2); }
+body:not(.is-story) .fp-city .fp-area-pick { flex: none; margin-top: var(--space-2); }
+body:not(.is-story) .fp-city-chart { flex: 1; min-height: 0; margin-top: var(--space-2); overflow: hidden; }
+/* longer context behind a disclosure; opened, it takes the chart's place rather than pushing it off-screen */
+.fp-city-more { flex: none; margin-top: var(--space-2); font-size: var(--text-sm); line-height: var(--leading-body); color: var(--ink-2); }
+.fp-city-more > summary { width: fit-content; min-height: 32px; display: flex; align-items: center; cursor: pointer; color: var(--accent); font-weight: var(--weight-semibold); }
+.fp-city-more > summary:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.fp-city-more[open] { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.fp-city:has(.fp-city-more[open]) .fp-city-chart { flex: 0 0 0; height: 0; margin: 0; }
+.fp-city:has(.fp-city-more[open]) .fp-area-pick { display: none; }
+.fp-city-more .fp-city-sub { margin: var(--space-2) 0 0; max-width: 90ch; }
+.fp-city-more .fp-city-notes { display: block; margin: 0; }
+.fp-city-more .fp-city-notes p { margin: var(--space-2) 0 0; max-width: 90ch; }
 
 /* dialogs: the table and the method */
 .fp-dialog .fp-table { margin: 0; }
@@ -109,14 +122,11 @@ body.is-story .fp-panels { display: block; }
 /* ---- short windows: tighter rhythm before anything would overflow ------------------------------------------------ */
 @media (max-height: 800px) {
   /* the intro sentence is context, not a control: on short windows the title alone leads (its ⓘ explains) */
-  body:not(.is-story) .fp-intro .lede { display: none; }
-  body:not(.is-story) .fp-profile .pf-cap { padding-top: var(--space-1); font-size: var(--text-xs); }
-  .fp-card { padding: var(--space-2) var(--space-3) var(--space-3); gap: var(--space-1); }
-  .fp-big b { font-size: 26px; }
-  .fp-verdict { margin-top: var(--space-2); }
-  body:not(.is-story) .fp-view:not([hidden]), .depth .page-view:not([hidden]) { padding: var(--space-4) var(--space-5); }
-  body:not(.is-story) .fp-examples { margin-top: var(--space-2); margin-bottom: var(--space-2); }
-  .fp-panels { margin-top: var(--space-3); }
+  body:not(.is-story) .fp-intro { margin-bottom: var(--space-2); }
+  .fp-card { padding: var(--space-2) var(--space-3); }
+  body:not(.is-story) .fp-view:not([hidden]), .depth .page-view:not([hidden]) { padding: var(--space-3) var(--space-5); }
+  .fp-nav { margin-top: var(--space-2); }
+  .fp-panels { margin-top: var(--space-2); }
   .page.about .steps-row li { padding: var(--space-2) 0; }
   .page.about .disclosure > summary { padding: var(--space-2) 0; }
   .about-main { gap: var(--space-4); }
@@ -125,21 +135,38 @@ body.is-story .fp-panels { display: block; }
 
 /* ---- tablets and phones: one column, and the page scrolls as a whole ---------------------------------------------- */
 @media (max-width: 900px) {
-  body[data-depth="compare"]:not(.is-story) .depth, body[data-depth="page"] .depth { overflow-y: auto; display: block; }
-  body[data-depth="compare"]:not(.is-story) .depth-body, body[data-depth="page"] .depth-body { display: block; }
-  body:not(.is-story) .fp-view:not([hidden]), .depth .page-view:not([hidden]) { display: block; overflow: visible; padding: var(--space-4) var(--space-4) var(--space-6); }
-  body:not(.is-story) .fp-view > .fp-wrap, .depth .page-view:not([hidden]) > .page { height: auto; min-height: 0; }
+  body[data-depth="page"] .depth { overflow-y: auto; display: block; }
+  body[data-depth="page"] .depth-body { display: block; }
+  .depth .page-view:not([hidden]) { display: block; overflow: visible; padding: var(--space-4) var(--space-4) var(--space-6); }
+  .depth .page-view:not([hidden]) > .page { height: auto; min-height: 0; }
+  body:not(.is-story) .fp-view:not([hidden]) { padding: var(--space-3) var(--space-4); }
+  /* last resort on a very small screen: the rows keep a readable minimum and the page scrolls, instead of clipping */
+  body:not(.is-story) .fp-view:not([hidden]) { overflow-y: auto; }
+  body:not(.is-story) .fp-fit { min-height: 9rem; }
+  body:not(.is-story) .fp-city-chart { min-height: 5rem; }
   .depth .page.about { grid-template-columns: 1fr; gap: var(--space-6); }
   .help-grid { grid-template-columns: 1fr; gap: var(--space-5); }
   /* the three tabs keep their row; Table and Method drop to the line below */
   .fp-nav { flex-wrap: wrap; row-gap: 0; }
-  /* the page scrolls as a whole: the matrix shows its full height, its header still sticks */
-  .fp-matrix-scroll { overflow: visible; }
-  body:not(.is-story) #fp-panel-profile { overflow: visible; }
   .fp-nav .xr-tabs { flex: 1 0 100%; gap: var(--space-4); }
   .fp-nav .bx-method-btn:first-of-type { margin-left: 0; }
 }
 @media (min-width: 901px) and (max-width: 1100px) {
   .help-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) var(--space-5); }
   .page.help .help-grid p { font-size: var(--text-sm); }
+}
+
+/* Compare, By category: the chart and the pair at a glance share the panel's height. Below 900px the glance column
+   gives its room back to the chart (the cards still carry both scores). */
+body:not(.is-story) .fp-prof-main .fp-fit { flex: 1; }
+@media (max-height: 800px) {
+  .fp-prof-main, .fp-g-card { padding: var(--space-2) var(--space-3); }
+  .fp-verdict { margin-top: var(--space-2); padding-block: 6px; }
+}
+@media (max-width: 900px) {
+  .fp-prof-grid { grid-template-columns: minmax(0, 1fr); }
+  .fp-glance { display: none !important; }
+  .fp-prof-main { padding: var(--space-2) var(--space-2) var(--space-1); }
+  .fp-prof-main > .fp-g-title { display: none; }
+  .fp-scorebar { width: 56px; }
 }
