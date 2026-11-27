@@ -285,3 +285,20 @@ test('ward card: the full list sorts every column both ways and keeps unrecorded
   }
 });
 
+
+test('common problems: every ward has items to rank, and big selections keep the citywide bar of 30', async () => {
+  const { minRatedFor } = await import('../dashboard/js/sections/problems.js');
+  const { itemProblemRates } = await import('../dashboard/js/model.js');
+  assert.equal(minRatedFor(3590), 30, 'citywide unchanged');
+  assert.equal(minRatedFor(60), 30, 'wards of 60+ buildings unchanged');
+  assert.equal(minRatedFor(28), 14, 'a small ward: half its buildings');
+  assert.equal(minRatedFor(9), 5, 'never fewer than 5');
+  for (const era of ['cur', 'pre']) {
+    const pm = M.byPeriod[era];
+    for (const [ward, rs] of d3.group(pm.latest, (r) => r.ward)) {
+      if (rs.length < 5) continue;   // too few buildings to rank anything; the chart says so
+      const ranked = itemProblemRates(rs, pm).filter((d) => d.rated >= minRatedFor(rs.length));
+      assert.ok(ranked.length >= 3, `${era} ward ${ward} (${rs.length} buildings): ${ranked.length} items ranked`);
+    }
+  }
+});
